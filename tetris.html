@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>微信俄罗斯方块</title>
+    <style>
+        body {
+            margin: 0;
+            background: #f0f0f0;
+            touch-action: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #gameCanvas {
+            background: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .controls {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #4CAF50;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            touch-action: manipulation;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">得分: 0</div>
+    <canvas id="gameCanvas"></canvas>
+    <div class="controls">
+        <div class="control-btn" id="left">←</div>
+        <div class="control-btn" id="rotate">↻</div>
+        <div class="control-btn" id="right">→</div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreElement = document.getElementById('score');
+
+// 适配移动端屏幕
+function resizeCanvas() {
+    const size = Math.min(window.innerWidth - 20, 300);
+    canvas.width = size;
+    canvas.height = size * 1.6;
+    blockSize = Math.floor(size / 10);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// 游戏常量
+const BOARD_WIDTH = 10;
+const BOARD_HEIGHT = 16;
+const SHAPES = [
+    [[1,1,1,1]], // I
+    [[1,1,1],[0,1,0]], // T
+    [[1,1,1],[1,0,0]], // L
+    [[1,1,1],[0,0,1]], // J
+    [[1,1],[1,1]], // O
+    [[1,1,0],[0,1,1]], // S
+    [[0,1,1],[1,1,0]]  // Z
+];
+
+let board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+let currentPiece = null;
+let currentPos = {x: 0, y: 0};
+let score = 0;
+let gameLoop;
+
+// 生成新方块
+function createPiece() {
+    const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+    currentPiece = shape;
+    currentPos = {
+        x: Math.floor(BOARD_WIDTH/2 - shape[0].length/2),
+        y: 0
+    };
+}
+
+// 碰撞检测
+function checkCollision() {
+    return currentPiece.some((row, dy) => 
+        row.some((cell, dx) => 
+            cell && (
+                currentPos.x + dx < 0 ||
+                currentPos.x + dx >= BOARD_WIDTH ||
+                currentPos.y + dy >= BOARD_HEIGHT ||
+                board[currentPos.y + dy][currentPos.x + dx]
+            )
+        )
+    );
+}
+
+// 合并到棋盘
+function mergePiece() {
+    currentPiece.forEach((row, dy) => {
+        row.forEach((cell, dx) => {
+            if (cell) {
+                board[currentPos.y + dy][currentPos.x + dx] = 1;
+            }
+        });
+    });
+}
+
+// 消除满行
+function clearLines() {
+    let linesCleared = 0;
+    for (let y = BOARD_HEIGHT - 1; y >= 0; y--) {
+        if (board[y].every(cell => cell)) {
+            board.splice(y, 1);
+            board.unshift(Array(BOARD_WIDTH).fill(0));
+            linesCleared++;
+            y++;
+        }
+    }
+    if (linesCleared) {
+        score += linesCleared * 100;
+        scoreElement.textContent = `得分: ${score}`;
+    }
+}
+
+// 旋转方块
+function rotate() {
+    const newPiece = currentPiece[0].map((_, i) =>
+        currentPiece.map(row => row[i]).reverse()
+    );
+    const oldPiece = currentPiece;
+    currentPiece = newPiece;
+    if (checkCollision()) {
+        currentPiece = oldPiece;
+    }
+}
+
+// 游戏主循环
+function update() {
+    currentPos.y++;
+    if (checkCollision()) {
+        currentPos.y--;
+        mergePiece();
+        clearLines();
+        createPiece();
+        if (checkCollision()) {
+            alert(`游戏结束！得分: ${score}`);
+            resetGame();
+        }
+    }
+    draw();
+}
+
+// 绘制游戏
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 绘制棋盘
+    board.forEach((row, y) => {
+        row.forEach((cell, x) => {
+            if (cell) {
+                ctx.fillStyle = '#4CAF50';
+                ctx.fillRect(x*blockSize, y*blockSize, blockSize-1, blockSize-1);
+            }
+        });
+    });
+
+    // 绘制当前方块
+    currentPiece.forEach((row, dy) => {
+        row.forEach((cell, dx) => {
+            if (cell) {
+                ctx.fillStyle = '#FF5722';
+                ctx.fillRect(
+                    (currentPos.x + dx)*blockSize,
+                    (currentPos.y + dy)*blockSize,
+                    blockSize-1,
+                    blockSize-1
+                );
+            }
+        });
+    });
+}
+
+// 重置游戏
+function resetGame() {
+    board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+    score = 0;
+    scoreElement.textContent = `得分: ${score}`;
+    createPiece();
+    if (gameLoop) clearInterval(gameLoop);
+    gameLoop = setInterval(update, 1000);
+}
+
+// 触摸控制
+document.getElementById('left').addEventListener('touchstart', () => {
+    currentPos.x--;
+    if (checkCollision()) currentPos.x++;
+    draw();
+});
+document.getElementById('right').addEventListener('touchstart', () => {
+    currentPos.x++;
+    if (checkCollision()) currentPos.x--;
+    draw();
+});
+document.getElementById('rotate').addEventListener('touchstart', () => {
+    rotate();
+    draw();
+});
+
+// 键盘控制
+document.addEventListener('keydown', (e) => {
+    switch(e.key) {
+        case 'ArrowLeft': currentPos.x--; break;
+        case 'ArrowRight': currentPos.x++; break;
+        case 'ArrowUp': rotate(); break;
+        case 'ArrowDown': currentPos.y++; break;
+    }
+    if (checkCollision()) {
+        switch(e.key) {
+            case 'ArrowLeft': currentPos.x++; break;
+            case 'ArrowRight': currentPos.x--; break;
+            case 'ArrowDown': currentPos.y--; break;
+        }
+    }
+    draw();
+});
+
+// 启动游戏
+resetGame();
+</script>
+</body>
+</html>
